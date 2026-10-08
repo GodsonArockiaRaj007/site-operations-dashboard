@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
+import { MapPin, Plus, Search } from "lucide-react";
 import api from "../services/api";
+import Alert from "../components/Alert";
+import EmptyState from "../components/EmptyState";
+import FormField from "../components/FormField";
+import LoadingState from "../components/LoadingState";
+import PageHeader from "../components/PageHeader";
+import StatusBadge from "../components/StatusBadge";
 
 const emptyForm = {
   name: "",
@@ -13,25 +20,30 @@ const Sites = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingSiteId, setEditingSiteId] = useState(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [form, setForm] = useState(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const fetchSites = async () => {
     try {
-      setError("");
       const response = await api.get("/sites");
+      setError("");
       setSites(response.data.data || []);
     } catch (error) {
       console.error("Sites error:", error);
-      setError("Failed to load sites.");
+      setError(
+        error.response?.data?.message || "Failed to load sites."
+      );
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchSites();
+    void Promise.resolve().then(fetchSites);
   }, []);
 
   const resetForm = () => {
@@ -41,27 +53,37 @@ const Sites = () => {
     setError("");
   };
 
+  const startCreate = () => {
+    setForm(emptyForm);
+    setEditingSiteId(null);
+    setShowForm(true);
+    setError("");
+    setNotice("");
+  };
+
   const handleChange = (e) => {
-    setForm({
-      ...form,
+    setForm((current) => ({
+      ...current,
       [e.target.name]: e.target.value,
-    });
+    }));
   };
 
   const handleEdit = (site) => {
     setEditingSiteId(site.id);
     setForm({
-      name: site.name,
-      location: site.location,
-      status: site.status,
+      name: site.name || "",
+      location: site.location || "",
+      status: site.status || "pending",
     });
     setShowForm(true);
     setError("");
+    setNotice("");
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setNotice("");
 
     const siteData = {
       ...form,
@@ -70,24 +92,29 @@ const Sites = () => {
     };
 
     if (!siteData.name || !siteData.location) {
-      setError("Site name and location are required.");
+      setError("Enter a site name and location to continue.");
       return;
     }
 
+    setSubmitting(true);
     try {
-      if (editingSiteId === null) {
-        await api.post("/sites", siteData);
-      } else {
+      const isEditing = editingSiteId !== null;
+      if (isEditing) {
         await api.put(`/sites/${editingSiteId}`, siteData);
+      } else {
+        await api.post("/sites", siteData);
       }
 
       resetForm();
+      setNotice(isEditing ? "Site changes saved." : "Site created.");
       await fetchSites();
     } catch (error) {
       console.error("Save site error:", error);
       setError(
         error.response?.data?.message || "Failed to save site."
       );
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -97,27 +124,36 @@ const Sites = () => {
     }
 
     setError("");
+    setNotice("");
+    setDeletingId(site.id);
     try {
       await api.delete(`/sites/${site.id}`);
       if (editingSiteId === site.id) {
         resetForm();
       }
+      setNotice("Site deleted.");
       await fetchSites();
     } catch (error) {
       console.error("Delete site error:", error);
       setError(
         error.response?.data?.message || "Failed to delete site."
       );
+    } finally {
+      setDeletingId(null);
     }
   };
 
-  const filteredSites = sites.filter((site) => {
-    const searchValue = search.toLowerCase();
-    const matchesSearch =
-      site.name?.toLowerCase().includes(searchValue) ||
-      site.location?.toLowerCase().includes(searchValue) ||
-      site.status?.toLowerCase().includes(searchValue);
+  const formatDate = (date) =>
+    date ? new Date(date).toLocaleDateString() : "—";
 
+  const filteredSites = sites.filter((site) => {
+    const searchValue = search.trim().toLowerCase();
+    const matchesSearch = [
+      site.name,
+      site.location,
+      site.status,
+      site.created_by,
+    ].some((value) => value?.toLowerCase().includes(searchValue));
     return (
       matchesSearch &&
       (statusFilter === "all" || site.status === statusFilter)
@@ -125,198 +161,248 @@ const Sites = () => {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800">Sites</h1>
-          <p className="mt-1 text-slate-500">
-            Manage operational sites.
-          </p>
-        </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Workspace"
+        title="Sites"
+        description="Manage locations and monitor their operational status."
+        action={
+          <button
+            type="button"
+            onClick={showForm ? resetForm : startCreate}
+            className="btn-primary"
+            disabled={submitting}
+          >
+            {showForm ? (
+              "Close form"
+            ) : (
+              <>
+                <Plus size={17} />
+                Add site
+              </>
+            )}
+          </button>
+        }
+      />
 
-        <button
-          onClick={() => {
-            if (showForm) {
-              resetForm();
-            } else {
-              setForm(emptyForm);
-              setEditingSiteId(null);
-              setShowForm(true);
-              setError("");
-            }
-          }}
-          className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          {showForm ? "Cancel" : "+ Add Site"}
-        </button>
-      </div>
+      {notice && <Alert variant="success" message={notice} />}
+      {error && !showForm && <Alert variant="error" message={error} />}
 
       {showForm && (
-        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-lg font-semibold text-slate-800">
-            {editingSiteId === null ? "Add New Site" : "Edit Site"}
-          </h2>
-
-          {error && (
-            <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
-              {error}
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-5 py-4 sm:px-6">
+            <h2 className="text-base font-semibold text-slate-900">
+              {editingSiteId === null ? "Add a site" : "Edit site"}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Site name and location are required.
+            </p>
+          </div>
+          <form onSubmit={handleSubmit} className="p-5 sm:p-6">
+            {error && (
+              <div className="mb-5">
+                <Alert variant="error" message={error} />
+              </div>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <FormField id="site-name" label="Site name" required>
+                <input
+                  id="site-name"
+                  type="text"
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  placeholder="e.g. North Ridge Facility"
+                  autoComplete="organization"
+                  className="form-control"
+                  required
+                  disabled={submitting}
+                />
+              </FormField>
+              <FormField id="site-location" label="Location" required>
+                <input
+                  id="site-location"
+                  type="text"
+                  name="location"
+                  value={form.location}
+                  onChange={handleChange}
+                  placeholder="City, region"
+                  autoComplete="address-level2"
+                  className="form-control"
+                  required
+                  disabled={submitting}
+                />
+              </FormField>
+              <FormField id="site-status" label="Status">
+                <select
+                  id="site-status"
+                  name="status"
+                  value={form.status}
+                  onChange={handleChange}
+                  className="form-control"
+                  disabled={submitting}
+                >
+                  <option value="pending">Pending</option>
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </FormField>
             </div>
-          )}
+            <div className="mt-5 flex flex-wrap gap-3">
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={submitting}
+              >
+                {submitting
+                  ? editingSiteId === null
+                    ? "Creating..."
+                    : "Saving..."
+                  : editingSiteId === null
+                  ? "Create site"
+                  : "Save changes"}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={resetForm}
+                disabled={submitting}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
 
-          <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-3">
-            <input
-              type="text"
-              name="name"
-              value={form.name}
-              onChange={handleChange}
-              placeholder="Site name"
-              aria-label="Site name"
-              className="rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="relative w-full sm:max-w-sm">
+            <Search
+              size={17}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              aria-hidden="true"
             />
-
             <input
-              type="text"
-              name="location"
-              value={form.location}
-              onChange={handleChange}
-              placeholder="Location"
-              aria-label="Location"
-              className="rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search sites..."
+              aria-label="Search sites"
+              className="form-control pl-9"
             />
-
+          </div>
+          <div className="flex items-center gap-3">
+            <label htmlFor="site-status-filter" className="text-sm text-slate-500">
+              Status
+            </label>
             <select
-              name="status"
-              value={form.status}
-              onChange={handleChange}
-              aria-label="Site status"
-              className="rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+              id="site-status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="form-control w-auto min-w-[145px]"
             >
+              <option value="all">All statuses</option>
               <option value="pending">Pending</option>
               <option value="active">Active</option>
               <option value="completed">Completed</option>
             </select>
-
-            <button
-              type="submit"
-              className="rounded-xl bg-slate-800 px-5 py-3 font-semibold text-white hover:bg-slate-900 md:w-fit"
-            >
-              {editingSiteId === null ? "Create Site" : "Save Changes"}
-            </button>
-          </form>
+          </div>
         </div>
-      )}
 
-      {!showForm && error && (
-        <div className="mb-5 rounded-xl bg-red-50 p-4 text-sm text-red-600">
-          {error}
-        </div>
-      )}
-
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by site, location or status..."
-          aria-label="Search sites"
-          className="w-full max-w-md rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-500"
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          aria-label="Filter sites by status"
-          className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-500"
-        >
-          <option value="all">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="active">Active</option>
-          <option value="completed">Completed</option>
-        </select>
-      </div>
-
-      {loading ? (
-        <p className="text-slate-500">Loading sites...</p>
-      ) : (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full min-w-[850px]">
-            <thead className="bg-slate-100">
-              <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold">
-                  Site
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">
-                  Location
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">
-                  Status
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">
-                  Created By
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredSites.map((site) => (
-                <tr
-                  key={site.id}
-                  className="border-t border-slate-200 hover:bg-slate-50"
-                >
-                  <td className="px-6 py-4 font-medium text-slate-800">
-                    {site.name}
-                  </td>
-                  <td className="px-6 py-4 text-slate-600">
-                    {site.location}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        site.status === "active"
-                          ? "bg-green-100 text-green-700"
-                          : site.status === "completed"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-yellow-100 text-yellow-700"
-                      }`}
-                    >
-                      {site.status?.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-600">
-                    {site.created_by || "-"}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={() => handleEdit(site)}
-                        className="font-medium text-blue-600 hover:text-blue-800"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(site)}
-                        className="font-medium text-red-600 hover:text-red-800"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {filteredSites.length === 0 && (
-            <div className="p-8 text-center text-slate-500">
-              No sites found.
+        {loading ? (
+          <LoadingState label="Loading sites..." />
+        ) : error && sites.length === 0 ? (
+          <div className="p-5">
+            <Alert variant="error" message={error} />
+          </div>
+        ) : filteredSites.length === 0 ? (
+          <EmptyState
+            icon={MapPin}
+            title={sites.length === 0 ? "No sites yet" : "No matching sites"}
+            description={
+              sites.length === 0
+                ? "Add your first site to start managing operations."
+                : "Try adjusting your search or status filter."
+            }
+          />
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[800px] text-left">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th scope="col" className="table-heading">
+                      Site
+                    </th>
+                    <th scope="col" className="table-heading">
+                      Location
+                    </th>
+                    <th scope="col" className="table-heading">
+                      Status
+                    </th>
+                    <th scope="col" className="table-heading">
+                      Created by
+                    </th>
+                    <th scope="col" className="table-heading">
+                      Created
+                    </th>
+                    <th scope="col" className="table-heading">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredSites.map((site) => (
+                    <tr key={site.id} className="transition-colors hover:bg-slate-50/80">
+                      <td className="table-cell font-medium text-slate-900">
+                        {site.name}
+                      </td>
+                      <td className="table-cell text-slate-600">
+                        <span className="inline-flex items-center gap-2">
+                          <MapPin size={15} className="text-slate-400" />
+                          {site.location}
+                        </span>
+                      </td>
+                      <td className="table-cell">
+                        <StatusBadge status={site.status} />
+                      </td>
+                      <td className="table-cell text-slate-600">
+                        {site.created_by || "—"}
+                      </td>
+                      <td className="table-cell whitespace-nowrap text-slate-600">
+                        {formatDate(site.created_at)}
+                      </td>
+                      <td className="table-cell">
+                        <div className="flex justify-end gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(site)}
+                            className="text-sm font-medium text-blue-700 hover:text-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(site)}
+                            disabled={deletingId === site.id}
+                            className="text-sm font-medium text-red-700 hover:text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 disabled:cursor-wait disabled:opacity-50"
+                          >
+                            {deletingId === site.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
-      )}
+            <div className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
+              Showing {filteredSites.length} of {sites.length} sites
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
 };
