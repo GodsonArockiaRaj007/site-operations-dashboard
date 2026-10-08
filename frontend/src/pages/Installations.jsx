@@ -378,7 +378,7 @@ const Installations = () => {
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search installations..."
               aria-label="Search installations"
-              className="form-control pl-9"
+              className="form-control search-control"
             />
           </div>
           <div className="flex items-center gap-3">

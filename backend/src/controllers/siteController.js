@@ -1,5 +1,7 @@
 import pool from "../config/db.js";
 
+const DEFAULT_CREATED_BY_USER_ID = 1;
+
 // Get all sites
 export const getSites = async (req, res) => {
   try {
@@ -35,7 +37,7 @@ export const getSites = async (req, res) => {
 // Create a new site
 export const createSite = async (req, res) => {
   try {
-    const { name, location, status, created_by } = req.body;
+    const { name, location, status } = req.body;
 
     // Validation
     if (!name || !location) {
@@ -55,7 +57,7 @@ export const createSite = async (req, res) => {
         name,
         location,
         status || "pending",
-        created_by || null,
+        DEFAULT_CREATED_BY_USER_ID,
       ]
     );
 

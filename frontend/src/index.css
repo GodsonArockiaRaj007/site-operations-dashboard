@@ -142,6 +142,10 @@ button:disabled {
   background-color: #f8fafc;
 }
 
+.search-control {
+  padding-left: 38px;
+}
+
 .table-heading {
   padding: 12px 20px;
   color: #64748b;

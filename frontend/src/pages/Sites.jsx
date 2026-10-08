@@ -289,7 +289,7 @@ const Sites = () => {
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search sites..."
               aria-label="Search sites"
-              className="form-control pl-9"
+              className="form-control search-control"
             />
           </div>
           <div className="flex items-center gap-3">
@@ -368,7 +368,7 @@ const Sites = () => {
                         <StatusBadge status={site.status} />
                       </td>
                       <td className="table-cell text-slate-600">
-                        {site.created_by || "—"}
+                        {site.created_by || "-"}
                       </td>
                       <td className="table-cell whitespace-nowrap text-slate-600">
                         {formatDate(site.created_at)}
